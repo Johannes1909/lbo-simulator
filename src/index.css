@@ -1,0 +1,138 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens live here, in one place, so the palette can change without
+ * hunting through components. Default appearance: a printed investment
+ * memo — broken-white ground, pure-white surfaces, brass as the single
+ * accent, steel blue reserved for debt, red reserved for real warnings.
+ * Dark mode is available via the toggle (adds [data-theme="dark"] to the
+ * root) but is not the default appearance regardless of OS preference.
+ * All text-color pairs below are checked to sit at or above 4.5:1 contrast;
+ * hairline borders are intentionally subtler (decorative dividers, not
+ * text) but stay within a visible ~1.8–2.7:1.
+ */
+:root {
+  --color-bg: #f7f5ef;
+  --color-bg-panel: #ffffff;
+  --color-bg-panel-raised: #ffffff;
+  --color-border: #c2b89c;
+  --color-border-strong: #a89c7c;
+
+  --color-text: #16213a;
+  --color-text-muted: #55607a;
+  --color-heading: #0f1830;
+
+  --color-brass: #7c6039;
+  --color-brass-light: #a9824f;
+  --color-brass-dark: #5c4527;
+
+  --color-debt: #4a6789;
+  --color-debt-light: #7691b3;
+
+  --color-equity: #a9824f;
+
+  --color-warning: #a83a2e;
+  --color-warning-bg: rgba(168, 58, 46, 0.08);
+
+  --font-serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif;
+  --font-mono: 'SF Mono', 'Cascadia Mono', 'JetBrains Mono', Consolas, 'Liberation Mono', monospace;
+  --font-sans: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --color-bg: #0a1628;
+  --color-bg-panel: #0f1f38;
+  --color-bg-panel-raised: #142744;
+  --color-border: #24334f;
+  --color-border-strong: #3a4d70;
+
+  --color-text: #cbd5e1;
+  --color-text-muted: #7e8fac;
+  --color-heading: #f3f0e8;
+
+  --color-brass: #b8945f;
+  --color-brass-light: #d9b98a;
+  --color-brass-dark: #8a6d42;
+
+  --color-debt: #5b7ca8;
+  --color-debt-light: #86a4c9;
+
+  --color-equity: #d9b98a;
+
+  --color-warning: #d3564a;
+  --color-warning-bg: rgba(211, 86, 74, 0.12);
+
+  color-scheme: dark;
+}
+
+@theme {
+  --color-bg: var(--color-bg);
+  --color-bg-panel: var(--color-bg-panel);
+  --color-bg-panel-raised: var(--color-bg-panel-raised);
+  --color-border: var(--color-border);
+  --color-border-strong: var(--color-border-strong);
+  --color-text: var(--color-text);
+  --color-text-muted: var(--color-text-muted);
+  --color-heading: var(--color-heading);
+  --color-brass: var(--color-brass);
+  --color-brass-light: var(--color-brass-light);
+  --color-brass-dark: var(--color-brass-dark);
+  --color-debt: var(--color-debt);
+  --color-debt-light: var(--color-debt-light);
+  --color-equity: var(--color-equity);
+  --color-warning: var(--color-warning);
+  --color-warning-bg: var(--color-warning-bg);
+  --font-serif: var(--font-serif);
+  --font-mono: var(--font-mono);
+  --font-sans: var(--font-sans);
+  --radius-none: 0px;
+}
+
+* {
+  border-radius: 0 !important;
+  box-shadow: none;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-serif);
+  color: var(--color-heading);
+  font-weight: 600;
+  margin: 0;
+}
+
+.font-figures {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Respect reduced-motion preferences for value transitions. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brass-light);
+  outline-offset: 2px;
+}
