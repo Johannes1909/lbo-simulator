@@ -64,7 +64,8 @@ export function OperatingTab() {
         <h2 className="text-xl mb-1">One-off costs</h2>
         <p className="text-xs mb-3" style={{ color: 'var(--color-text-muted)' }}>
           Cash costs in a specific year (restructuring, integration, a downturn) — not tax-deductible in this
-          version, subtracted directly from free cash flow. Per-year overrides for revenue and margin arrive in
+          version, subtracted directly from free cash flow. Revenue growth can be set per year on the calculator
+          (Uniform/Per year toggle); per-year overrides for margin, capex and working capital arrive in
           Milestone 3.
         </p>
         <div className="flex flex-col gap-2">
