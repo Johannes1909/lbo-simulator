@@ -1,10 +1,40 @@
 import { en } from '../i18n/en'
+import { debtSizingEbitda, resolveTrancheSourceAmount } from '../model/sourcesUses'
 import type { DealInputs } from '../model/types'
 import { useDealStore } from '../state/store'
 import { SliderControl } from './controls/SliderControl'
 import { paramRanges } from './controls/paramRanges'
 import { ToggleControl } from './controls/ToggleControl'
 import { formatMultiple, formatNumber, formatPercent } from './format'
+import { TableNumberInput } from './fullmodel/tableInputs'
+
+function GrowthModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: 'flat' | 'perYear'
+  onChange: (mode: 'flat' | 'perYear') => void
+}) {
+  return (
+    <div className="flex border" style={{ borderColor: 'var(--color-border-strong)' }}>
+      {(['flat', 'perYear'] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          onClick={() => onChange(m)}
+          aria-pressed={mode === m}
+          className="text-xs px-2 py-1 cursor-pointer"
+          style={{
+            color: mode === m ? 'var(--color-bg)' : 'var(--color-text-muted)',
+            background: mode === m ? 'var(--color-brass)' : 'transparent',
+          }}
+        >
+          {m === 'flat' ? en.controls.growthFlat : en.controls.growthPerYear}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 function ControlGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -22,13 +52,37 @@ export function EssentialsControls() {
   const updateInputs = useDealStore((s) => s.updateInputs)
   const t = en.controls
 
-  const tranche = inputs.financing.tranches[0]
+  const primaryTranche = inputs.financing.tranches[0]
+  const debtEbitda = debtSizingEbitda(inputs)
+  // Funded debt only — an undrawn revolver commitment doesn't count, so this
+  // lines up with what Sources & Uses actually shows as "Debt tranches".
+  const totalDebtMultiple =
+    debtEbitda > 0
+      ? inputs.financing.tranches.reduce((sum, tr) => sum + resolveTrancheSourceAmount(tr, debtEbitda), 0) / debtEbitda
+      : 0
 
   function update(fn: (draft: DealInputs) => void) {
     updateInputs((prev) => {
       const next: DealInputs = structuredClone(prev)
       fn(next)
       return next
+    })
+  }
+
+  /** Scales every tranche's amount proportionally (funded amount as the basis) so the total (in × EBITDA) becomes `nextTotal` — keeps the capital structure's relative mix intact, including the revolver's committed size. */
+  function scaleAllTranches(nextTotal: number) {
+    update((d) => {
+      const ebitda = debtSizingEbitda(d)
+      if (ebitda <= 0 || d.financing.tranches.length === 0) return
+      const currentTotal =
+        d.financing.tranches.reduce((sum, tr) => sum + resolveTrancheSourceAmount(tr, ebitda), 0) / ebitda
+      if (currentTotal > 0) {
+        const scale = nextTotal / currentTotal
+        for (const tr of d.financing.tranches) tr.amount.value *= scale
+      } else {
+        const first = d.financing.tranches[0]!
+        first.amount = { mode: 'multipleOfEbitda', value: nextTotal }
+      }
     })
   }
 
@@ -61,37 +115,35 @@ export function EssentialsControls() {
       </ControlGroup>
 
       <ControlGroup title={t.financingGroup}>
-        {tranche && tranche.amount.mode === 'multipleOfEbitda' && (
+        {inputs.financing.tranches.length > 0 && (
           <SliderControl
             label={t.debtMultiple}
-            value={tranche.amount.value}
+            value={totalDebtMultiple}
             range={paramRanges.debtMultiple}
             formatValue={(v) => formatMultiple(v)}
-            onChange={(v) =>
-              update((d) => {
-                const tr = d.financing.tranches[0]
-                if (tr && tr.amount.mode === 'multipleOfEbitda') tr.amount.value = v
-              })
-            }
+            onChange={scaleAllTranches}
           />
         )}
-        {tranche && (
+        {primaryTranche && (
           <>
             <SliderControl
               label={t.interestRate}
-              value={tranche.fixedRatePct}
+              value={primaryTranche.fixedRatePct}
               range={paramRanges.interestRate}
               formatValue={(v) => formatPercent(v, 1)}
               onChange={(v) =>
                 update((d) => {
                   const tr = d.financing.tranches[0]
-                  if (tr) tr.fixedRatePct = v
+                  if (tr) {
+                    tr.fixedRatePct = v
+                    if (tr.rate?.kind === 'fixed') tr.rate = { kind: 'fixed', ratePct: v }
+                  }
                 })
               }
             />
             <SliderControl
               label={t.amortizationPct}
-              value={tranche.scheduledAmortizationPctOfOriginal}
+              value={primaryTranche.scheduledAmortizationPctOfOriginal}
               range={paramRanges.scheduledAmortization}
               formatValue={(v) => formatPercent(v, 1)}
               onChange={(v) =>
@@ -103,7 +155,7 @@ export function EssentialsControls() {
             />
             <SliderControl
               label={t.cashSweepPct}
-              value={tranche.cashSweepParticipationPct}
+              value={primaryTranche.cashSweepParticipationPct}
               range={paramRanges.cashSweepParticipation}
               formatValue={(v) => formatPercent(v, 0)}
               onChange={(v) =>
@@ -118,17 +170,71 @@ export function EssentialsControls() {
       </ControlGroup>
 
       <ControlGroup title={t.operatingGroup}>
-        <SliderControl
-          label={t.revenueGrowth}
-          value={inputs.operating.revenueGrowthPct}
-          range={paramRanges.revenueGrowth}
-          formatValue={(v) => formatPercent(v, 1)}
-          onChange={(v) =>
-            update((d) => {
-              d.operating.revenueGrowthPct = v
-            })
-          }
-        />
+        <div className="flex flex-col gap-2">
+          <div className="flex items-baseline justify-between">
+            <span className="text-sm" style={{ color: 'var(--color-text)' }}>
+              {t.revenueGrowth}
+            </span>
+            <GrowthModeToggle
+              mode={inputs.operating.revenueGrowthMode ?? 'flat'}
+              onChange={(mode) =>
+                update((d) => {
+                  if (mode === 'perYear' && (d.operating.revenueGrowthByYear?.length ?? 0) === 0) {
+                    d.operating.revenueGrowthByYear = Array.from(
+                      { length: d.transaction.holdPeriodYears },
+                      () => d.operating.revenueGrowthPct,
+                    )
+                  }
+                  d.operating.revenueGrowthMode = mode
+                })
+              }
+            />
+          </div>
+
+          {(inputs.operating.revenueGrowthMode ?? 'flat') === 'flat' ? (
+            <SliderControl
+              label={t.revenueGrowth}
+              value={inputs.operating.revenueGrowthPct}
+              range={paramRanges.revenueGrowth}
+              formatValue={(v) => formatPercent(v, 1)}
+              onChange={(v) =>
+                update((d) => {
+                  d.operating.revenueGrowthPct = v
+                })
+              }
+            />
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {Array.from({ length: inputs.transaction.holdPeriodYears }, (_, i) => i + 1).map((year) => (
+                <div key={year} className="flex items-center gap-3">
+                  <span className="text-xs w-14" style={{ color: 'var(--color-text-muted)' }}>
+                    Year {year}
+                  </span>
+                  <TableNumberInput
+                    value={inputs.operating.revenueGrowthByYear?.[year - 1] ?? inputs.operating.revenueGrowthPct}
+                    onChange={(v) =>
+                      update((d) => {
+                        const arr = d.operating.revenueGrowthByYear
+                          ? [...d.operating.revenueGrowthByYear]
+                          : Array.from({ length: d.transaction.holdPeriodYears }, () => d.operating.revenueGrowthPct)
+                        while (arr.length < year) arr.push(d.operating.revenueGrowthPct)
+                        arr[year - 1] = v
+                        d.operating.revenueGrowthByYear = arr
+                      })
+                    }
+                    step={0.5}
+                    width="w-20"
+                    ariaLabel={`Revenue growth, year ${year}`}
+                  />
+                  <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                    %
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <SliderControl
           label={t.ebitdaMargin}
           value={inputs.operating.ebitdaMarginPct}
@@ -137,50 +243,6 @@ export function EssentialsControls() {
           onChange={(v) =>
             update((d) => {
               d.operating.ebitdaMarginPct = v
-            })
-          }
-        />
-        <SliderControl
-          label={t.daPctRevenue}
-          value={inputs.operating.daPctOfRevenue}
-          range={paramRanges.daPctRevenue}
-          formatValue={(v) => formatPercent(v, 1)}
-          onChange={(v) =>
-            update((d) => {
-              d.operating.daPctOfRevenue = v
-            })
-          }
-        />
-        <SliderControl
-          label={t.capexPctRevenue}
-          value={inputs.operating.maintenanceCapexPctOfRevenue}
-          range={paramRanges.capexPctRevenue}
-          formatValue={(v) => formatPercent(v, 1)}
-          onChange={(v) =>
-            update((d) => {
-              d.operating.maintenanceCapexPctOfRevenue = v
-            })
-          }
-        />
-        <SliderControl
-          label={t.workingCapitalPct}
-          value={inputs.operating.workingCapitalPctOfRevenueGrowth}
-          range={paramRanges.workingCapitalPct}
-          formatValue={(v) => formatPercent(v, 1)}
-          onChange={(v) =>
-            update((d) => {
-              d.operating.workingCapitalPctOfRevenueGrowth = v
-            })
-          }
-        />
-        <SliderControl
-          label={t.taxRate}
-          value={inputs.operating.taxRatePct}
-          range={paramRanges.taxRate}
-          formatValue={(v) => formatPercent(v, 1)}
-          onChange={(v) =>
-            update((d) => {
-              d.operating.taxRatePct = v
             })
           }
         />

@@ -150,6 +150,229 @@ started yet — proceeding on the sponsor's go-ahead.
 All 44 tests green (33 model/state + 11 new UI interaction tests),
 reference case still 20.20% / 2.509x.
 
+## Milestone 2 — Capital structure (2026-08-20)
+
+Reference Case 1 (single tranche, 100% sweep, interest on prior-year-end
+balance) passes unchanged and unedited — the model layer was extended, not
+rewritten; the single-tranche case is now the N=1 special case of the
+general waterfall. All 44 Milestone-1-era tests pass without modification.
+14 new capital-structure tests added, all green: 58 total.
+
+### Model (`src/model/`)
+
+- **Types**: every new field on `DebtTranche`, `DealInputs`, `SourcesUses`
+  etc. is optional with an engine-level default — this is what let the old
+  test fixtures keep compiling and producing identical numbers untouched.
+- **`debt.ts`** rewritten for N tranches: seniority-ranked waterfall (cash
+  interest → PIK capitalization → commitment fee → scheduled amortization
+  by rank → revolver draw on shortfall → revolver repay-first on excess →
+  cash sweep by rank and participation), a real revolver (committed vs.
+  drawn, draws automatically, repays before any other sweep, commitment fee
+  on the undrawn portion only, a shortfall beyond its capacity is reported
+  not absorbed), floating rates (deal-wide reference curve + per-tranche
+  margin and optional floor), and cash/PIK splitting by a per-tranche %.
+  Both interest-basis conventions (prior-year-end, average-balance with
+  iteration) carried over unchanged.
+- **`sourcesUses.ts`** extended: itemized transaction costs (any mix of %-
+  of-EV and absolute), per-tranche arrangement fees, a revolver's committed
+  limit correctly excluded from Sources (only what's drawn at close
+  counts), management rollover, and a designable "plug tranche" for when
+  sponsor equity is fixed instead — solved as an exact fixed point so an
+  arrangement fee on the plug tranche itself doesn't throw off the balance.
+- **`covenants.ts`** (new): net debt/EBITDA, senior debt/EBITDA (rank
+  threshold configurable), interest coverage (cash interest only — PIK
+  isn't a cash claim), debt service coverage, free cash flow yield. Each
+  covenant has its own enable switch, threshold, headroom %, and a
+  plain-sentence message ("Interest coverage 1.8× is 10% below the limit
+  of 2.0×.") generated whether or not it's breached.
+- Defaults (`defaults.ts`) now build the sponsor's specified European
+  mid-market structure (TLA/TLB/revolver/mezzanine/unused seller note) —
+  see "Open point" below on what this does to the Milestone-1 acceptance
+  check.
+
+### UI
+
+- Full Model mode (toggle next to Essentials, state shared — switching
+  never resets the deal) with three tabs: **Capital structure** (itemized
+  Sources & Uses with a live balance check, an add/duplicate/remove/expand
+  tranche table covering every field above, the reference rate curve with
+  per-year overrides), **Debt schedule** (per-tranche year-by-year table,
+  total debt roll-forward, credit metrics with covenant headroom and
+  breach messages), **Operating** (the four sliders that moved out of
+  Essentials, plus a per-year one-off-cost table — see open point below).
+- Essentials' "Debt (× EBITDA)" slider now scales every tranche
+  proportionally (by funded amount, so it stays consistent with what
+  Sources & Uses displays — an undrawn revolver's committed size doesn't
+  inflate the figure) rather than editing a single tranche.
+- Deleveraging chart now stacks by tranche, five shades of the steel-blue
+  debt color assigned by seniority rank (cycling if there are more than
+  five tranches), legend below listing every tranche by name.
+- Bug found and fixed while browser-testing the new charts: at very high
+  leverage (reachable now that debt tranches can be resized arbitrarily),
+  net debt can exceed enterprise value, which the value-split chart's
+  y-scale didn't account for — same class of fix as the equity-split chart
+  bug from the typed-input milestone, now applied here too.
+- Found and fixed a page-level horizontal-scroll regression at 380px width
+  in Full Model mode: a `flex-1` ancestor chain needs explicit `min-w-0`
+  for a `overflow-x-auto` table further down to actually clip and scroll
+  internally instead of forcing the whole page wider — a real CSS gotcha,
+  not previously hit because Milestone 1's layout had no wide tables.
+- Methodology page extended with the waterfall order, floating-rate/PIK
+  mechanics, and the covenant/headroom definitions; the simplifications
+  list now covers prepayment penalty (captured, not yet applied), maturity
+  (not enforced), and the free-cash-flow-yield convention.
+
+### Open points for the sponsor
+
+- **The app's default view no longer opens on Reference Case 1's exact
+  numbers.** Milestone 1's fix made the default deal Reference Case 1
+  itself specifically so the app doubled as a standing acceptance check;
+  this milestone's brief separately specifies the mid-market five-tranche
+  structure as "Voreinstellung bei neuem Deal." Both can't be true at once,
+  so the newer, more specific instruction won. Reference Case 1 still
+  passes as an automated test — it's just no longer literally what the
+  app shows on load (now ~19.9% IRR / 2.47x). Say the word if you want it
+  reverted.
+- Essentials' slider count is 10, not the "acht Kernregler" mentioned —
+  same tension flagged at the end of the previous milestone, unresolved
+  either way pending your call on what to trim.
+- Prepayment penalty and call protection are UI-editable (so your next
+  reference case can be entered in full) but not yet economically applied
+  in the cash flow — flagged rather than guessed, since the spec's
+  seven-step waterfall didn't include them and I didn't want to invent the
+  convention for how a penalty gets funded.
+- One-off costs per year is the only per-year operating override that
+  exists before Milestone 3 — if your next reference case's downturn year
+  needs an actual revenue/margin shock rather than a cash cost, that's not
+  buildable through the UI yet.
+- Senior debt/EBITDA covenant defaults to disabled (no default threshold
+  was specified for it, unlike the other three) — enable it and set a
+  threshold on the Capital Structure tab if you want it checked from the
+  start.
+
+## Milestone 2 follow-up: presets, prepayment penalty, per-year growth (2026-08-23)
+
+Response to three points raised at Milestone 2 review. All three
+implemented; 68 tests green (58 + 10 new), Reference Case 1 unchanged.
+
+### 1. Startup state reverted to Reference Case 1 — via a shared source, not a second fixture
+
+- The app opening on the wrong numbers while the reference-case test
+  passed was traced (per the sponsor's diagnostic request) to incomplete
+  work, not a calculation bug — confirmed by running the test in isolation
+  and comparing the test's inputs against the app's default inputs
+  side-by-side before changing anything.
+- Fixed at the root: `presets.ts` (new) now holds the ONE definition of
+  Reference Case 1 (`buildReferenceCaseInputs()`) and of the European
+  mid-market structure (`buildEuropeanMidMarketInputs()`). Both
+  `referenceCase1.test.ts` and `defaults.ts` — and so the app's actual
+  startup state — build from the same function. A new test
+  (`appDefaults.test.ts`) asserts `buildDefaultDealInputs()` itself
+  produces 20.20% / 2.509x, i.e. it tests the real startup path, not a
+  separately-typed copy of it — this specific class of drift can't happen
+  silently again.
+- A "Preset" selector (Reference case / European mid-market) lets either
+  structure be loaded on demand; loading one replaces the entire deal
+  state and asks first if the current state has diverged from whichever
+  preset was last loaded (no save system exists yet to fall back on, so an
+  unconfirmed overwrite would just lose the edits).
+
+### 2. Prepayment penalty wired into the waterfall
+
+- Charged on cash sweep and revolver paydown only, only inside
+  `callProtectionYears`, never on scheduled amortization — per the
+  sponsor's specified convention. % × the amount actually repaid, funded
+  from the same period's excess-cash pool ahead of the next tranche in
+  rank order (sized so repayment + its own penalty can never draw the pool
+  negative). New fields: `TrancheYear.prepaymentPenaltyPaid`,
+  `DebtYear.totalPrepaymentPenalties`.
+- 4 new tests: charged within protection, zero once protection lapses,
+  never on scheduled amortization even when fully inside the protection
+  window, and a same-debt-repaid / lower-leftover-cash check confirming
+  it's a real cash cost and not just bookkeeping.
+
+### 3. Revenue growth, per year — brought forward from Milestone 3
+
+- `OperatingInputs` gained `revenueGrowthMode` ('flat' | 'perYear') and
+  `revenueGrowthByYear`, both optional so every existing fixture keeps
+  compiling and behaving identically. A year missing from the per-year
+  table falls back to the flat rate.
+- Essentials gained a Uniform/Per-year toggle on the revenue growth
+  control; switching to per-year seeds the table from the current flat
+  rate (so the existing assumption isn't discarded) and switching back
+  keeps the table intact for next time. Margin, capex and working capital
+  are untouched, as instructed — still single assumptions until Milestone
+  3's full per-year tables.
+- Browser-verified end to end with the sponsor's own downturn shape
+  (+6%, −20%, −20%, −20%, 0%) on the European mid-market preset: real
+  financial distress shows up correctly — net debt/EBITDA climbing to
+  7.06x, debt service coverage falling to 0.49x, plain-sentence covenant
+  breach messages, negative IRR, the equity wedge visibly compressing in
+  the value-split chart. The revolver itself doesn't draw in that specific
+  run (2.0 minimum cash still had enough slack) — that's a property of
+  those inputs, not a gap in the logic; the revolver-draw test
+  (`capitalStructure.test.ts`, a large one-off cost) already exercises the
+  draw/repay path directly. Flagging in case a steeper shock or a higher
+  minimum cash is what's wanted to see it engage in the sponsor's own
+  case.
+
+## Two findings from Reference Case B review (2026-08-23)
+
+### Bug: Senior debt / EBITDA undercounted Term Loan B
+
+- Confirmed as a real bug, not just an unusual reading: Term Loan A and
+  Term Loan B are both senior secured debt, but the metric used the
+  waterfall's seniority *rank* as the classification (rank ≤ 1), which
+  only ever meant "gets paid first," not "is senior debt" — so TLB (rank
+  2) was silently excluded, understating the ratio (1.43x shown vs.
+  ~3.3–3.4x correct).
+- Fixed by decoupling the two concepts: `seniorRankThreshold` removed from
+  `CovenantSettings` entirely; senior/subordinated is now a classification
+  (`DebtTranche.isSeniorDebt`, optional, defaulting to true for
+  `termLoan`/`revolver` and false for `mezzanine`/`sellerNote`, overridable
+  per tranche for an atypical structure). Verified live on the European
+  mid-market preset: 3.32x in year 1, matching the sponsor's hand check of
+  "around 3.4x." 2 new tests, including that a per-tranche override wins
+  over the type-based default.
+
+### Save/name/reopen — built
+
+- `savedCases.ts`: versioned localStorage module (list, get, create,
+  update, rename, duplicate, delete, export all as JSON, import that
+  merges by id without overwriting existing entries), every mutating
+  operation returning an explicit ok/error result rather than throwing —
+  a full or unavailable browser storage surfaces as a message, not a
+  crash. 10 tests: save/load round-trips to the same state, update keeps
+  the id, delete removes only the chosen entry, export→import into an
+  empty store reproduces the same set, and import is a merge (skips
+  what's already there) rather than a replace.
+- Calculator page: Save (overwrites the open case, or behaves like Save
+  as new if nothing's open yet), Save as new (only shown once a case is
+  open, per the brief), the open case's name with a small dot when it's
+  diverged from what's saved.
+- `/saved` rebuilt from the Part-A stub: sortable list (name/date) with
+  IRR/multiple/entry-leverage columns computed at save time (not live —
+  deliberately, so the list doesn't re-run the engine for every row on
+  every render), open/rename/duplicate/delete (with confirmation)/copy
+  link per row, multi-select comparison table, Export all / Import,
+  empty state, and a quiet note about the storage being local to this
+  browser.
+- Preset switching and opening a saved case can now interact — fixed
+  before it caused a stale "unsaved changes" prompt: applying a preset
+  clears which case was open, and the unsaved-changes check compares
+  against the open case's own inputs when one is open, rather than
+  always against the last preset loaded.
+- Browser-verified end to end: save, edit, see the dot, overwrite-save,
+  save-as-new, open from the list, multi-select compare, delete (only
+  the selected row gone) — no console errors anywhere in the flow.
+- Not built: the "you opened a shared link — save it locally?" banner
+  from the original brief. Save is now always visible regardless of how
+  the state was loaded (preset, shared link, or manual edits), so the
+  capability exists either way — the banner would only save a few clicks.
+  Flagging the scope cut rather than silently dropping it.
+
+80 tests total, all green.
+
 ### Built
 
 - Project scaffolded: Vite + React + TypeScript (strict mode), Tailwind CSS

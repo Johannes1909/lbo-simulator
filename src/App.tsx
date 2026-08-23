@@ -14,7 +14,7 @@ function App() {
   else if (path === '/saved') Page = SavedPage
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col min-w-0">
       <NavBar />
       <Page />
     </div>

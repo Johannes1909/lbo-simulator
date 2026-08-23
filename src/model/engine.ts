@@ -1,9 +1,10 @@
 import { computeValueBridge } from './analytics'
+import { computeCreditMetrics } from './covenants'
 import { computeDebtAndIncomeSchedule } from './debt'
 import { computeOperatingPlan } from './operating'
 import { computeIRR, computeMoneyMultiple } from './returns'
 import { entryEbitda, computeSourcesUses } from './sourcesUses'
-import type { CreditMetricsYear, DealInputs, EquityCashFlow, ModelOutput } from './types'
+import type { DealInputs, EquityCashFlow, ModelOutput } from './types'
 
 export function runModel(inputs: DealInputs): ModelOutput {
   const warnings: string[] = []
@@ -22,14 +23,7 @@ export function runModel(inputs: DealInputs): ModelOutput {
   )
   warnings.push(...debtWarnings)
 
-  const creditMetrics: CreditMetricsYear[] = debtYears.map((dy, i) => {
-    const ebitda = operatingYears[i]!.ebitda
-    return {
-      year: dy.year,
-      netDebtToEbitda: ebitda !== 0 ? dy.netDebtClosing / ebitda : NaN,
-      interestCoverage: dy.totalInterest !== 0 ? ebitda / dy.totalInterest : Infinity,
-    }
-  })
+  const creditMetrics = computeCreditMetrics(inputs, operatingYears, debtYears, incomeYears)
 
   const exitYear = inputs.exit.exitYear
   const exitOperating = operatingYears.find((y) => y.year === exitYear)

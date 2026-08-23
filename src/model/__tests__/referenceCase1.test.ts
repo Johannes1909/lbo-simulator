@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { runModel } from '../engine'
-import type { DealInputs } from '../types'
+import { buildReferenceCaseInputs } from '../presets'
 
 /**
  * Hand-calculated reference case, provided and independently verified by
@@ -11,52 +11,13 @@ import type { DealInputs } from '../types'
  * removes the circularity and makes the case hand-checkable). If any figure
  * here is ever off by more than rounding, the bug is in the code, not this
  * fixture.
+ *
+ * The inputs come from buildReferenceCaseInputs() in presets.ts — the same
+ * function the app's default startup state uses — not a second hand-typed
+ * copy. That's what makes "the app opens on the wrong numbers" and "this
+ * test passes" impossible to both be true at once without being caught.
  */
-const referenceCase1Inputs: DealInputs = {
-  transaction: {
-    valuationBasis: 'ebitda',
-    entryMultiple: 9.0,
-    ltmMetric: 40.0,
-    targetNetDebt: 0,
-    transactionCostsPct: 0,
-    minCashBalance: 0,
-    holdPeriodYears: 5,
-  },
-  financing: {
-    tranches: [
-      {
-        id: 'term-loan',
-        name: 'Term Loan',
-        seniorityRank: 1,
-        amount: { mode: 'absolute', value: 198.0 },
-        fixedRatePct: 7.0,
-        scheduledAmortizationPctOfOriginal: 0,
-        cashSweepParticipationPct: 100,
-      },
-    ],
-    interestBasis: 'priorYearEnd',
-    convergenceTolerance: 0.001,
-    maxIterationsPerYear: 50,
-  },
-  operating: {
-    revenueYear0: 200.0,
-    revenueGrowthPct: 6.0,
-    ebitdaMarginPct: 20.0,
-    daPctOfRevenue: 2.4,
-    maintenanceCapexPctOfRevenue: 2.4,
-    growthCapexPctOfRevenue: 0,
-    workingCapitalPctOfRevenueGrowth: 3.0,
-    taxRatePct: 20.0,
-    oneOffCostsByYear: [],
-  },
-  exit: {
-    exitYear: 5,
-    exitMultiple: 9.0,
-    exitMultipleEqualsEntry: false,
-    exitCostsPct: 0,
-  },
-  equity: {},
-}
+const referenceCase1Inputs = buildReferenceCaseInputs()
 
 describe('reference case 1', () => {
   const result = runModel(referenceCase1Inputs)

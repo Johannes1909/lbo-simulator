@@ -28,6 +28,12 @@
 
   --color-debt: #4a6789;
   --color-debt-light: #7691b3;
+  /* Shades for the deleveraging chart's per-tranche stack, senior (darkest) to junior (lightest) — all one steel-blue family, never a new hue. */
+  --color-debt-rank-1: #20324a;
+  --color-debt-rank-2: #30445d;
+  --color-debt-rank-3: #40566f;
+  --color-debt-rank-4: #4f6782;
+  --color-debt-rank-5: #5f7994;
 
   --color-equity: #a9824f;
 
@@ -58,6 +64,11 @@
 
   --color-debt: #5b7ca8;
   --color-debt-light: #86a4c9;
+  --color-debt-rank-1: #456a92;
+  --color-debt-rank-2: #5e80a5;
+  --color-debt-rank-3: #7796b7;
+  --color-debt-rank-4: #90acca;
+  --color-debt-rank-5: #a9c2dc;
 
   --color-equity: #d9b98a;
 
@@ -81,6 +92,11 @@
   --color-brass-dark: var(--color-brass-dark);
   --color-debt: var(--color-debt);
   --color-debt-light: var(--color-debt-light);
+  --color-debt-rank-1: var(--color-debt-rank-1);
+  --color-debt-rank-2: var(--color-debt-rank-2);
+  --color-debt-rank-3: var(--color-debt-rank-3);
+  --color-debt-rank-4: var(--color-debt-rank-4);
+  --color-debt-rank-5: var(--color-debt-rank-5);
   --color-equity: var(--color-equity);
   --color-warning: var(--color-warning);
   --color-warning-bg: var(--color-warning-bg);

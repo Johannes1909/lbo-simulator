@@ -43,12 +43,52 @@ export function MethodologyPage() {
         <section className="flex flex-col gap-2">
           <h2 className="text-lg">Cash sweep waterfall</h2>
           <p>
-            Each year: scheduled amortization is paid first (capped at what cash actually allows —
-            Milestone 1 has a single tranche and no revolving credit line yet, so a shortfall is
-            reported as a liquidity warning rather than drawn from a facility that doesn't exist
-            in this version). Whatever cash remains above the minimum cash balance then sweeps
-            against the tranche, up to its configured participation percentage. A tranche balance
-            never goes below zero.
+            Each year, in this order: cash interest on every tranche; PIK interest capitalizes onto
+            the tranches that carry it; the commitment fee on any undrawn revolver; scheduled
+            amortization by seniority rank, capped at what cash actually allows; if cash still won't
+            cover the minimum balance, the revolver draws up to its committed limit (a shortfall
+            beyond that is reported, not silently absorbed); any excess above the minimum first
+            repays a drawn revolver, then sweeps the remaining tranches strictly in rank order, each
+            up to its configured participation percentage — a subordinated tranche never receives
+            sweep cash while a senior tranche with sweep participation still has an unpaid balance
+            at the end of that same period. No tranche balance ever goes below zero.
+          </p>
+        </section>
+
+        <section className="flex flex-col gap-2">
+          <h2 className="text-lg">Floating rates and PIK</h2>
+          <p>
+            A floating-rate tranche's coupon is the deal's reference rate curve (a flat % by
+            default, overridable year by year) plus the tranche's own margin, with an optional
+            floor. A tranche's coupon can be split between cash and PIK by a configurable
+            percentage — the PIK share capitalizes onto the balance and is not a cash outflow, but
+            it is still tax-deductible, exactly like cash interest.
+          </p>
+        </section>
+
+        <section className="flex flex-col gap-2">
+          <h2 className="text-lg">Prepayment penalty</h2>
+          <p>
+            Charged on any voluntary early repayment — a cash sweep or a revolver paydown — while
+            the tranche is still inside its call-protection window; never on scheduled amortization,
+            and never once that window has passed. The penalty is % × the amount actually repaid,
+            paid in cash the same year, funded from the same pool of excess cash the repayment came
+            from — so it reduces what's left for the next tranche in the rank order that same
+            period, exactly as if it were one more claim on that period's cash sweep. The repayment
+            itself is sized so that repayment plus its own penalty never draws the pool below zero.
+          </p>
+        </section>
+
+        <section className="flex flex-col gap-2">
+          <h2 className="text-lg">Credit metrics and covenants</h2>
+          <p>
+            Net debt / EBITDA and senior debt / EBITDA (tranches at or above a configurable
+            seniority rank) use closing balances; interest coverage is EBITDA over cash interest
+            only (PIK is excluded, since it isn't a cash claim on the business); debt service
+            coverage is free cash flow over cash interest plus scheduled amortization. Each
+            covenant has its own enable switch and threshold; headroom is the % distance from the
+            threshold, positive when comfortable and negative when breached, and a breach is
+            reported as a plain sentence rather than just a red flag.
           </p>
         </section>
 
@@ -81,8 +121,10 @@ export function MethodologyPage() {
           <ul className="list-disc pl-5 flex flex-col gap-1">
             <li>Net operating loss carryforwards are unlimited and fully usable — no cap on annual usage. A more realistic cap arrives later.</li>
             <li>Closing is always treated as the start of a full year — no stub period for a mid-year transaction date yet.</li>
-            <li>One tranche, cash-pay, fixed rate — PIK interest, floating rates, a revolving credit line and multi-tranche seniority arrive in Milestone 2.</li>
-            <li>No management rollover, sweet equity or dividend recapitalization yet — Milestone 3.</li>
+            <li>A tranche's maturity doesn't force repayment or refinancing in the engine — if it falls before the hold period ends, the Capital Structure tab flags it, but the schedule still runs the balance through to exit.</li>
+            <li>Free cash flow yield is free cash flow (before debt service) divided by the entry enterprise value, held constant across years — a convention, flagged for confirmation, not a market-standard definition.</li>
+            <li>No management rollover economics, sweet equity waterfall, ratchet, or dividend recapitalization yet — Milestone 3. Management rollover currently only reduces the sponsor's cash equity need in Sources & Uses.</li>
+            <li>Revenue growth can be set per year (brought forward from Milestone 3 specifically to test the revolver against a downturn); margin, capex, working capital and one-off costs are still single assumptions for the whole hold period, except one-off costs, which are already a per-year table. Their per-year overrides arrive in Milestone 3.</li>
           </ul>
         </section>
 
