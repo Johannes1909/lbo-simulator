@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { runModel } from '../engine'
+import { debtSizingEbitda, resolveAmount, resolvePlugAmount } from '../sourcesUses'
 import type { DealInputs, DebtTranche } from '../types'
 
 function baseInputs(overrides: Partial<DealInputs> = {}): DealInputs {
@@ -7,7 +8,6 @@ function baseInputs(overrides: Partial<DealInputs> = {}): DealInputs {
     transaction: {
       valuationBasis: 'ebitda',
       entryMultiple: 8.0,
-      ltmMetric: 50.0,
       targetNetDebt: 0,
       transactionCostsPct: 0,
       minCashBalance: 5,
@@ -110,6 +110,27 @@ describe('multi-tranche Sources & Uses', () => {
     const result = runModel(inputs)
     expect(Math.abs(result.sourcesUses.imbalance)).toBeLessThanOrEqual(0.01)
     expect(result.sourcesUses.sourcesSponsorEquity).toBeCloseTo(80, 2)
+  })
+
+  it('the debt schedule opens the plug tranche at its solved Sources & Uses amount, not its own (irrelevant) amount field', () => {
+    // Regression test for Befund 1 (2026-08-24 pre-deployment review): the
+    // debt schedule used to resolve every tranche's opening balance,
+    // including the plug tranche, straight off its own `amount` field —
+    // completely ignoring the residual Sources & Uses had actually solved
+    // for. Sources & Uses balanced on paper while the entire downstream
+    // debt schedule, interest expense, IRR, and value bridge ran off a
+    // different, wrong tranche size.
+    const inputs = baseInputs({ equity: { fixedSponsorEquity: 80, plugTrancheId: 'tlb' } })
+    const tlbInput = inputs.financing.tranches.find((t) => t.id === 'tlb')!
+    const naiveAmount = resolveAmount(tlbInput.amount, debtSizingEbitda(inputs)) // what debt.ts used, pre-fix
+    const plugAmount = resolvePlugAmount(inputs)!
+    // Sanity check that this fixture actually exercises a real divergence,
+    // not a coincidence where the two happen to match.
+    expect(Math.abs(plugAmount - naiveAmount)).toBeGreaterThan(1)
+
+    const result = runModel(inputs)
+    const tlbYear1 = result.debtYears[0]!.tranches.find((t) => t.trancheId === 'tlb')!
+    expect(tlbYear1.openingBalance).toBeCloseTo(plugAmount, 2)
   })
 })
 
@@ -217,7 +238,7 @@ describe('revolver', () => {
     const result = runModel(inputs)
 
     const revolverTranche = inputs.financing.tranches.find((t) => t.trancheType === 'revolver')!
-    const committedLimit = 0.5 * inputs.transaction.ltmMetric // multipleOfEbitda resolved against LTM EBITDA
+    const committedLimit = 0.5 * debtSizingEbitda(inputs) // multipleOfEbitda resolved against LTM EBITDA
 
     let sawADraw = false
     for (const dy of result.debtYears) {

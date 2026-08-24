@@ -1,4 +1,4 @@
-import { debtSizingEbitda, resolveAmount } from './sourcesUses'
+import { resolveTrancheFaceAmounts } from './sourcesUses'
 import type {
   DealInputs,
   DebtTranche,
@@ -217,12 +217,16 @@ export function computeDebtAndIncomeSchedule(
 ): DebtScheduleResult {
   const { tranches, interestBasis, convergenceTolerance, maxIterationsPerYear, referenceRateCurve } =
     inputs.financing
-  const debtEbitda = debtSizingEbitda(inputs)
+  // Face amounts, including the plug tranche's solved residual — the same
+  // figures Sources & Uses displays, not each tranche's own `amount` field
+  // read in isolation (a plug tranche's `amount` is a placeholder; its real
+  // size only exists as the S&U residual).
+  const faceAmounts = resolveTrancheFaceAmounts(inputs)
 
   const originalAmounts: Record<string, number> = {}
   let trancheBalances: Record<string, number> = {}
   for (const t of tranches) {
-    const resolved = resolveAmount(t.amount, debtEbitda)
+    const resolved = faceAmounts[t.id]!
     originalAmounts[t.id] = resolved
     trancheBalances[t.id] = t.trancheType === 'revolver' ? (t.initialDrawnAmount ?? 0) : resolved
   }

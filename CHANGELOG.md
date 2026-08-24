@@ -1,5 +1,132 @@
 # Changelog
 
+## Pre-deployment structured review (2026-08-24)
+
+Requested by the sponsor after finding four bugs in one sitting that all
+passed existing tests (wrong app startup state, senior-debt metric
+excluding Term Loan B, missing save button, stale hint text) — the pattern
+mattered more than the individual bugs. Full written review delivered
+first (findings only, no fixes, per instruction); this entry covers the
+fixes the sponsor then chose to make, addressed one at a time.
+
+### 1. UI-driven test coverage — the actual root cause
+
+Every one of the 102 tests going into this review constructed `DealInputs`
+by hand and checked the model's output. That proves the engine is correct
+given correct input, never that a slider produces that input. New file
+`EssentialsControls.integration.test.tsx` drives the real component
+through the real Zustand store (`fireEvent.change` on the actual
+`<input type="range">`), not a hand-built object — including a test that
+iterates every slider currently rendered (read from the DOM at collection
+time via each slider's associated `<label for>`, not a list hand-copied
+into the test) and fails if any one of them turns out not to change any
+model output. Confirmed failing exactly where expected before any fix
+(interest-rate slider on a floating-rate tranche, LTM EBITDA slider) and
+passing everywhere else — pinning the cause before touching the fix.
+
+### 2. Bug: two independent EBITDA figures could silently disagree
+
+`transaction.ltmMetric` (displayed "LTM EBITDA," drove enterprise value and
+debt sizing) and `operating.revenueYear0 × ebitdaMarginPct` (drove the
+entire operating plan, every year's credit metrics, and the value bridge)
+were two separately-stored numbers with no field forcing them to match —
+the same shape of bug as the Milestone-1 debt-sizing bug, recurring
+through a different field after the first instance was "fixed." Moving the
+"LTM EBITDA" slider changed the displayed number and the deal's pricing,
+without changing the operating model at all.
+- Fixed by elimination, not synchronization: `transaction.ltmMetric`
+  removed from the type entirely. `entryEbitda()` in `sourcesUses.ts`
+  (`revenueYear0 × ebitdaMarginPct`) is now the only entry-EBITDA figure a
+  `DealInputs` can express; `enterpriseValue()` and `debtSizingEbitda()`
+  both read it, so they cannot independently disagree by construction.
+- The "LTM EBITDA" slider now back-solves `revenueYear0` from the chosen
+  EBITDA figure, margin unchanged (guarded against margin = 0).
+- `sourcesUsesInvariant.test.ts`, the regression test written for the
+  original instance of this bug, rewritten rather than deleted: it now
+  asserts `enterpriseValue()` and `debtSizingEbitda()` always resolve to
+  `entryEbitda()`, with the original divergence (25.0 vs 22.0) kept in a
+  comment as the historical record. `boundary.test.ts`'s "100% debt
+  financing" fixture, which depended on the old EV of 400 (= 8 × the old
+  ltmMetric of 50), kept that EV by raising the fixture's margin to 25% (so
+  `revenueYear0 200 × 25% = 50`) rather than changing the tranche amount —
+  one parameter changed, the test's stated claim ("100% debt → zero
+  equity") stays literally the same.
+
+### 3. Bug: interest-rate slider had no effect on floating-rate tranches
+
+`DebtTranche` carries both a legacy `fixedRatePct` and an optional `rate`
+(`{kind:'fixed'}` or `{kind:'floating', marginPct, floorPct?}`); the engine
+always prefers `rate` when present. The Essentials interest-rate slider
+wrote `fixedRatePct` unconditionally but only mirrored the change into
+`rate` when its kind was `'fixed'` — on a floating-rate tranche (every
+term loan and the revolver in the European mid-market preset) the slider
+visibly moved and the deal's numbers didn't, silently.
+- Fixed: the slider now displays the resolved effective rate (reference +
+  margin for a floating tranche, the flat rate for a fixed one, via
+  `resolveTrancheRate()`) and, on change, moves the underlying rate
+  parameter — margin for floating, `fixedRatePct`/`rate.ratePct` for fixed.
+  With more than one tranche, all move proportionally by the same scale
+  factor, mirroring how the debt-amount slider scales every tranche's
+  amount together (`scaleAllTranches`).
+
+### 4. Bug: the plug tranche's solved amount never reached the debt schedule
+
+When `equity.fixedSponsorEquity` + `equity.plugTrancheId` make a tranche
+the Sources & Uses residual, `computeSourcesUses()` solves for its real
+funded amount correctly — but `computeDebtAndIncomeSchedule()` in
+`debt.ts` resolved every tranche's opening balance, plug included, straight
+off that tranche's own (irrelevant) `amount` field. Sources & Uses balanced
+on paper while the entire debt schedule, interest expense, IRR, and value
+bridge ran off a different, wrong tranche size. The existing test for this
+path only checked `sourcesUses.imbalance`, never the schedule itself.
+- Fixed by extracting the plug-solving math out of `computeSourcesUses()`
+  into `resolvePlugAmount()`, and adding `resolveTrancheFaceAmounts()` —
+  every tranche's face amount, plug included — as the one thing both
+  `computeSourcesUses()` and `debt.ts` build from now.
+- New test: constructs a plug-tranche case where the naive (pre-fix)
+  amount and the correct solved amount differ by construction, and asserts
+  the debt schedule's opening balance for that tranche matches the solved
+  amount, not the naive one.
+
+### 5. Bug: the covenant status indicator was a hardcoded placeholder
+
+`ResultBar.tsx` had `const hasCovenants = false` with a comment saying
+covenants would arrive in Milestone 2 — never updated once they did. The
+one indicator designed to show risk without scrolling permanently read "No
+covenants configured yet," including in a downturn scenario with several
+covenants actually breached.
+- Fixed: reads `output.creditMetrics[*].covenantChecks` for real. Three
+  states — no covenant enabled (grey), all enabled covenants met across
+  every year (brass, "No covenant breach"), or at least one breach
+  (warning color, plain-text year and metric, e.g. "Covenant breach — Year
+  3: Net debt / EBITDA 6.8× is 13% above the limit of 6.0×", full list on
+  hover if more than one).
+- Uncovered while writing its test: no test in the app had ever rendered a
+  component using `AnimatedNumber` (ResultBar, Tombstone) — `jsdom` has no
+  `window.matchMedia`, so any such render crashed regardless of what was
+  being tested. Added a deterministic (`prefers-reduced-motion: no`)
+  polyfill to `src/test/setup.ts`, global, not per-test.
+
+106 tests total, all green (was 102 before this review; net +7 after also
+rewriting one and folding another into a stronger version of itself).
+Reference Case 1 unchanged at 20.20% IRR / 2.509x — both because it was
+already internally consistent (`revenueYear0 200 × margin 20% = 40 =` the
+old `ltmMetric`) and because `referenceCase1.test.ts` was re-run green
+after every one of the five steps above, not just at the end.
+
+### Open point for the sponsor
+
+- `transaction.valuationBasis` (`'ebitda' | 'revenue'`) is now a dead
+  field: it was read only inside the branch of `debtSizingEbitda()` that
+  the EBITDA-duality fix (point 2) removed, and there has never been a UI
+  control for it anywhere — no preset sets it to `'revenue'`, no slider or
+  toggle exposes it. Left in place (out of scope for this review — no
+  effect on any computed result), but it's a trap for later work: the type
+  suggests a revenue-basis valuation mode exists when it doesn't actually
+  do anything. Needs a decision — build the real UI control, or remove the
+  field and the type — before anyone builds on top of it assuming it
+  works.
+
 ## Post-Milestone-1 additions, pre-deployment (2026-08-18)
 
 ### Design pass: light mode as default

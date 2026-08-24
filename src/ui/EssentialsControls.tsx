@@ -1,5 +1,6 @@
 import { en } from '../i18n/en'
-import { debtSizingEbitda, resolveTrancheSourceAmount } from '../model/sourcesUses'
+import { resolveReferenceRate, resolveTrancheRate } from '../model/debt'
+import { debtSizingEbitda, entryEbitda, resolveTrancheSourceAmount } from '../model/sourcesUses'
 import type { DealInputs } from '../model/types'
 import { useDealStore } from '../state/store'
 import { SliderControl } from './controls/SliderControl'
@@ -103,12 +104,19 @@ export function EssentialsControls() {
         />
         <SliderControl
           label={t.ltmEbitda}
-          value={inputs.transaction.ltmMetric}
+          value={entryEbitda(inputs)}
           range={paramRanges.ltmEbitda}
           formatValue={(v) => formatNumber(v, 1)}
           onChange={(v) =>
             update((d) => {
-              d.transaction.ltmMetric = v
+              // LTM EBITDA is derived (revenueYear0 × margin), not stored — so
+              // this slider back-solves revenueYear0 for the chosen EBITDA,
+              // leaving the margin untouched. Margin can't reach exactly 0 via
+              // its own slider, but an imported/linked case could set it there;
+              // guard the division rather than writing NaN into the state.
+              if (d.operating.ebitdaMarginPct > 0) {
+                d.operating.revenueYear0 = v / (d.operating.ebitdaMarginPct / 100)
+              }
             })
           }
         />
@@ -128,15 +136,39 @@ export function EssentialsControls() {
           <>
             <SliderControl
               label={t.interestRate}
-              value={primaryTranche.fixedRatePct}
+              value={resolveTrancheRate(primaryTranche, inputs.financing.referenceRateCurve, 1)}
               range={paramRanges.interestRate}
               formatValue={(v) => formatPercent(v, 1)}
               onChange={(v) =>
                 update((d) => {
-                  const tr = d.financing.tranches[0]
-                  if (tr) {
-                    tr.fixedRatePct = v
-                    if (tr.rate?.kind === 'fixed') tr.rate = { kind: 'fixed', ratePct: v }
+                  const primary = d.financing.tranches[0]
+                  if (!primary) return
+                  // Displayed value is the effective rate (reference + margin
+                  // for a floating tranche, the flat rate for a fixed one) —
+                  // not fixedRatePct, which a floating tranche never reads
+                  // (that was Befund 3: this slider used to write a field the
+                  // engine ignored). Multiple tranches move together
+                  // proportionally, the same mechanism the debt-amount slider
+                  // uses in scaleAllTranches() below.
+                  const currentRate = resolveTrancheRate(primary, d.financing.referenceRateCurve, 1)
+                  if (currentRate <= 0) {
+                    if (primary.rate?.kind === 'floating') {
+                      const ref = resolveReferenceRate(d.financing.referenceRateCurve, 1)
+                      primary.rate.marginPct = Math.max(0, v - ref)
+                    } else {
+                      primary.fixedRatePct = v
+                      if (primary.rate?.kind === 'fixed') primary.rate.ratePct = v
+                    }
+                    return
+                  }
+                  const scale = v / currentRate
+                  for (const tr of d.financing.tranches) {
+                    if (tr.rate?.kind === 'floating') {
+                      tr.rate.marginPct = Math.max(0, tr.rate.marginPct * scale)
+                    } else {
+                      tr.fixedRatePct *= scale
+                      if (tr.rate?.kind === 'fixed') tr.rate.ratePct *= scale
+                    }
                   }
                 })
               }

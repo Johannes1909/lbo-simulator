@@ -7,7 +7,6 @@ function baseInputs(overrides: Partial<DealInputs> = {}): DealInputs {
     transaction: {
       valuationBasis: 'ebitda',
       entryMultiple: 8.0,
-      ltmMetric: 50.0,
       targetNetDebt: 0,
       transactionCostsPct: 0,
       minCashBalance: 0,
@@ -77,12 +76,15 @@ describe('boundary and edge cases', () => {
       transaction: {
         valuationBasis: 'ebitda',
         entryMultiple: 8.0,
-        ltmMetric: 50.0,
         targetNetDebt: 0,
         transactionCostsPct: 0,
         minCashBalance: 0,
         holdPeriodYears: 5,
       },
+      // Margin deliberately raised to 25% (from the 20% default) so entry
+      // EBITDA (revenueYear0 200 × 25%) is exactly 50, matching the tranche
+      // amount below via EV = 8 × 50 = 400 — otherwise 400 looks arbitrary.
+      operating: { ...baseInputs().operating, ebitdaMarginPct: 25.0 },
       financing: {
         tranches: [
           {

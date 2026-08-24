@@ -1,34 +1,27 @@
 import type { AmountInput, DealInputs, DebtTranche, SourcesUses } from './types'
 
 /**
- * EBITDA implied by the operating plan's own year-0 revenue and margin.
- * This is NOT necessarily the same figure as the transaction's LTM EBITDA
- * input — a real deal's LTM EBITDA (a trailing-twelve-months fact used for
- * pricing) and a forecast model's year-0 base can legitimately differ. Used
- * only as the debt-sizing base when valuationBasis is 'revenue', i.e. when
- * there is no EBITDA transaction input to anchor on instead.
+ * LTM/entry EBITDA — the operating plan's own year-0 revenue times its
+ * margin. This is the ONLY definition of entry EBITDA in the app: it is
+ * what "LTM EBITDA" displays, what enterprise value is priced against, and
+ * what debt tranches are sized against. There used to be a second,
+ * separately-stored `transaction.ltmMetric` input alongside this one; the
+ * two could silently disagree (a real bug — debt sizing used one, the
+ * operating model and value bridge used the other). Removed rather than
+ * synced, so there is exactly one EBITDA figure for the whole deal to
+ * disagree with itself about.
  */
 export function entryEbitda(inputs: DealInputs): number {
   return inputs.operating.revenueYear0 * (inputs.operating.ebitdaMarginPct / 100)
 }
 
 export function enterpriseValue(inputs: DealInputs): number {
-  return inputs.transaction.ltmMetric * inputs.transaction.entryMultiple
+  return entryEbitda(inputs) * inputs.transaction.entryMultiple
 }
 
-/**
- * The EBITDA figure "× EBITDA" tranche sizing is sized against. When the
- * deal is valued on an EBITDA basis, this IS the displayed LTM EBITDA —
- * debt is sized off the same trailing EBITDA the entry price is set on, not
- * off a separately-derived operating-model figure that could silently
- * disagree with it. Falls back to the operating model's EBITDA only when
- * the deal is valued on a revenue basis, where there is no EBITDA
- * transaction input to use instead.
- */
+/** The EBITDA figure "× EBITDA" tranche sizing is resolved against — same figure as entryEbitda(), see its doc comment. */
 export function debtSizingEbitda(inputs: DealInputs): number {
-  return inputs.transaction.valuationBasis === 'ebitda'
-    ? inputs.transaction.ltmMetric
-    : entryEbitda(inputs)
+  return entryEbitda(inputs)
 }
 
 export function resolveAmount(amount: AmountInput, ebitda0: number): number {
@@ -49,6 +42,82 @@ export function resolveTransactionCosts(inputs: DealInputs, ev: number): number 
   return flatCost + itemized
 }
 
+// A plug tranche only exists when sponsor equity is fixed — "then a tranche
+// becomes the residual instead" is conditional on that, per the brief.
+function resolvePlugTrancheId(inputs: DealInputs): string | undefined {
+  return inputs.equity.fixedSponsorEquity !== undefined ? inputs.equity.plugTrancheId : undefined
+}
+
+/**
+ * Solves the plug tranche's own funded amount — the Sources & Uses residual
+ * after every other line is known. `undefined` when there is no plug
+ * tranche (fixed sponsor equity unset, no plug tranche chosen, or the
+ * chosen id doesn't match an actual tranche).
+ *
+ * Shared by computeSourcesUses() and the debt schedule
+ * (computeDebtAndIncomeSchedule() in debt.ts, via resolveTrancheFaceAmounts()
+ * below) so the two can't independently disagree about how large the plug
+ * tranche actually is. They used to: debt.ts resolved every tranche,
+ * plug included, straight off its own (irrelevant, often stale) `amount`
+ * field, so a plug-tranche deal's entire debt schedule, IRR, and value
+ * bridge were computed against a different tranche size than the one shown
+ * in Sources & Uses.
+ */
+export function resolvePlugAmount(inputs: DealInputs): number | undefined {
+  const plugTrancheId = resolvePlugTrancheId(inputs)
+  if (plugTrancheId === undefined) return undefined
+  const plugTranche = inputs.financing.tranches.find((t) => t.id === plugTrancheId)
+  if (!plugTranche) return undefined
+
+  const ev = enterpriseValue(inputs)
+  const debtEbitda = debtSizingEbitda(inputs)
+  const usesRefinanceTargetDebt = inputs.transaction.targetNetDebt
+  const usesEquityPurchasePrice = ev - usesRefinanceTargetDebt
+  const usesTransactionCosts = resolveTransactionCosts(inputs, ev)
+  const usesMinCashFunding = inputs.transaction.minCashBalance
+  const sourcesManagementRollover = inputs.equity.managementRolloverAmount ?? 0
+
+  let nonPlugTrancheTotal = 0
+  let nonPlugFinancingFees = 0
+  for (const t of inputs.financing.tranches) {
+    if (t.id === plugTrancheId) continue
+    const amount = resolveTrancheSourceAmount(t, debtEbitda)
+    nonPlugTrancheTotal += amount
+    nonPlugFinancingFees += amount * ((t.arrangementFeePct ?? 0) / 100)
+  }
+
+  const usesExcludingPlugFee =
+    usesEquityPurchasePrice +
+    usesRefinanceTargetDebt +
+    usesTransactionCosts +
+    nonPlugFinancingFees +
+    usesMinCashFunding
+
+  const plugFeePct = (plugTranche.arrangementFeePct ?? 0) / 100
+  const sourcesSponsorEquity = inputs.equity.fixedSponsorEquity!
+  const gapBeforePlugFee =
+    usesExcludingPlugFee - sourcesSponsorEquity - sourcesManagementRollover - nonPlugTrancheTotal
+  // plugAmount = gap + plugAmount*plugFeePct (the plug funds its own fee too) → solve the fixed point.
+  return gapBeforePlugFee / (1 - plugFeePct)
+}
+
+/**
+ * Every tranche's face/committed amount at close, resolved from its
+ * `amount` field — except the plug tranche, which uses resolvePlugAmount()
+ * instead of its own (irrelevant) amount field. This is what the debt
+ * schedule opens every tranche's balance from; see debt.ts.
+ */
+export function resolveTrancheFaceAmounts(inputs: DealInputs): Record<string, number> {
+  const debtEbitda = debtSizingEbitda(inputs)
+  const plugAmount = resolvePlugAmount(inputs)
+  const plugTrancheId = plugAmount !== undefined ? resolvePlugTrancheId(inputs) : undefined
+  const amounts: Record<string, number> = {}
+  for (const t of inputs.financing.tranches) {
+    amounts[t.id] = t.id === plugTrancheId ? plugAmount! : resolveAmount(t.amount, debtEbitda)
+  }
+  return amounts
+}
+
 export function computeSourcesUses(inputs: DealInputs): SourcesUses {
   const ev = enterpriseValue(inputs)
   const debtEbitda = debtSizingEbitda(inputs)
@@ -59,18 +128,13 @@ export function computeSourcesUses(inputs: DealInputs): SourcesUses {
   const usesMinCashFunding = inputs.transaction.minCashBalance
   const sourcesManagementRollover = inputs.equity.managementRolloverAmount ?? 0
 
-  // A plug tranche only exists when sponsor equity is fixed — "then a tranche
-  // becomes the residual instead" is conditional on that, per the brief.
-  const plugTrancheId =
-    inputs.equity.fixedSponsorEquity !== undefined ? inputs.equity.plugTrancheId : undefined
+  const plugTrancheId = resolvePlugTrancheId(inputs)
 
-  const nonPlugAmounts = new Map<string, number>()
   let nonPlugTrancheTotal = 0
   let nonPlugFinancingFees = 0
   for (const t of inputs.financing.tranches) {
     if (t.id === plugTrancheId) continue
     const amount = resolveTrancheSourceAmount(t, debtEbitda)
-    nonPlugAmounts.set(t.id, amount)
     nonPlugTrancheTotal += amount
     nonPlugFinancingFees += amount * ((t.arrangementFeePct ?? 0) / 100)
   }
@@ -90,10 +154,7 @@ export function computeSourcesUses(inputs: DealInputs): SourcesUses {
     const plugTranche = inputs.financing.tranches.find((t) => t.id === plugTrancheId)!
     const plugFeePct = (plugTranche.arrangementFeePct ?? 0) / 100
     sourcesSponsorEquity = inputs.equity.fixedSponsorEquity!
-    const gapBeforePlugFee =
-      usesExcludingPlugFee - sourcesSponsorEquity - sourcesManagementRollover - nonPlugTrancheTotal
-    // plugAmount = gap + plugAmount*plugFeePct (the plug funds its own fee too) → solve the fixed point.
-    const plugAmount = gapBeforePlugFee / (1 - plugFeePct)
+    const plugAmount = resolvePlugAmount(inputs)!
     sourcesTrancheTotal = nonPlugTrancheTotal + plugAmount
     usesFinancingFees += plugAmount * plugFeePct
   } else {

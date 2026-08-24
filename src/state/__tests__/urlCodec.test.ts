@@ -6,7 +6,6 @@ const sample: DealInputs = {
   transaction: {
     valuationBasis: 'ebitda',
     entryMultiple: 9.0,
-    ltmMetric: 40.0,
     targetNetDebt: 12.5,
     transactionCostsPct: 1.5,
     minCashBalance: 5,

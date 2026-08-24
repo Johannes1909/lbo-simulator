@@ -17,7 +17,6 @@ export function buildReferenceCaseInputs(): DealInputs {
     transaction: {
       valuationBasis: 'ebitda',
       entryMultiple: 9.0,
-      ltmMetric: 40.0,
       targetNetDebt: 0,
       transactionCostsPct: 0,
       minCashBalance: 0,
@@ -143,7 +142,6 @@ export function buildEuropeanMidMarketInputs(): DealInputs {
     transaction: {
       valuationBasis: 'ebitda',
       entryMultiple: 9.0,
-      ltmMetric: 40.0,
       targetNetDebt: 0,
       transactionCostsPct: 0,
       transactionCostItems: [

@@ -89,8 +89,6 @@ export interface TransactionCostItem {
 export interface TransactionInputs {
   valuationBasis: ValuationBasis
   entryMultiple: number
-  /** LTM EBITDA or LTM revenue at entry, matching valuationBasis. */
-  ltmMetric: number
   targetNetDebt: number
   /** Flat transaction-cost %, kept for Milestone 1 compatibility — ADDS to transactionCostItems, doesn't replace it. */
   transactionCostsPct: number

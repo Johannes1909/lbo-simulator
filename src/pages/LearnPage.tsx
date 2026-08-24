@@ -3,7 +3,7 @@ import { glossaryEntries, learnSections, type LearnSection } from '../content/le
 import { en } from '../i18n/en'
 import { runModel } from '../model/engine'
 import { buildDefaultDealInputs } from '../model/defaults'
-import { enterpriseValue } from '../model/sourcesUses'
+import { enterpriseValue, entryEbitda } from '../model/sourcesUses'
 import type { DealInputs } from '../model/types'
 import { Link } from '../ui/Link'
 import { formatMoney, formatNumber, formatPercent } from '../ui/format'
@@ -77,7 +77,7 @@ const taxShieldY1 = interestY1 * (taxRatePct / 100)
 
 const placeholdersBySection: Record<string, Record<string, string>> = {
   'what-is-an-lbo': {
-    ebitda0: formatMoney(defaultInputs.transaction.ltmMetric),
+    ebitda0: formatMoney(entryEbitda(defaultInputs)),
     entryMultiple: formatNumber(defaultInputs.transaction.entryMultiple, 1),
     enterpriseValue: formatMoney(defaultEv),
     holdPeriod: formatNumber(defaultInputs.transaction.holdPeriodYears, 0),
