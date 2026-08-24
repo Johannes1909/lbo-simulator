@@ -1,61 +1,77 @@
 # LBO Simulator
 
-An interactive leveraged buyout model. Move a lever — entry multiple, leverage,
-growth — and watch the return and the risk move with it, live.
+An interactive leveraged buyout model. Move a lever, watch the return —
+and the risk — move with it.
 
-Built to two standards: the numbers must match a hand-built Excel model
-exactly, and the mechanics must be visible, not just the outputs.
+**Live: https://lbo-simulator-lake.vercel.app**
+
+## What it does
+
+A leveraged buyout finances most of a company's purchase price with debt
+that the acquired business itself repays. This tool models that
+mechanic: adjust the entry multiple, leverage, growth assumptions and
+exit multiple, and see the debt schedule, credit metrics and equity
+return update in real time.
+
+Two modes:
+
+- **Essentials** — eight core levers, the deal tombstone, three charts
+- **Full model** — sources & uses, multiple debt tranches with a
+  repayment waterfall, PIK interest, a revolving credit facility,
+  covenant testing with headroom
+
+## How the model works
+
+Each period runs: revenue → EBITDA → depreciation → interest → tax →
+free cash flow → repayment waterfall. Cash flow first covers mandatory
+amortisation, then draws on the revolver if it falls short, then sweeps
+any surplus to the tranches in order of seniority. PIK interest
+capitalises onto the tranche balance rather than being paid in cash.
+
+Returns are calculated from a real equity cash flow series, with IRR
+solved by bisection — not from a simplified multiple formula, so
+interim distributions and recapitalisations can be modelled correctly.
+
+Interest can be computed on the opening balance or on average balances;
+the latter is circular and resolved by iteration.
+
+Full detail, including every formula and convention, is on the
+Methodology page.
+
+## Verification
+
+The model is tested against three reference cases built independently
+in Excel and calculated by hand:
+
+- **Case A** — single tranche, 100 % cash sweep, no amortisation
+- **Case B** — four tranches, seniority waterfall, PIK interest,
+  transaction costs
+- **Case B2** — stress scenario: three consecutive years of decline,
+  revolver drawdown, negative free cash flow, equity nearly wiped out
+
+Every figure in the debt schedule, credit metrics and returns matches
+the hand calculation to two decimal places.
 
 ## Stack
 
-- **Vite + React + TypeScript** (strict mode)
-- **Tailwind CSS** for layout; the entire palette lives as CSS variables in
-  `src/index.css`
-- **Zustand** for the deal-input state
-- **Vitest** for tests
-- Charts are hand-built SVG components — no charting library, so the visual
-  language stays consistent with the rest of the app and the bundle stays
-  small
-- No backend: the entire deal state is compressed into the URL
-  (`lz-string`, URI-safe encoding) — a link *is* the case
-- Deployed on Vercel
+React, TypeScript, Vite. No backend, no accounts, no database — the
+complete deal state is encoded in the URL, so any scenario can be shared
+as a link. Charts are hand-built SVG.
 
-## Project structure
+The model lives in `src/model/` as pure functions with no UI
+dependencies, covered by unit tests plus an integration layer that
+drives the actual interface components.
+
+## Running locally
 
 ```
-src/
-  model/        pure calculation logic — no React imports, no side effects.
-                Runs unchanged in a plain Node script. This is the part
-                that has to be exactly right.
-  state/        Zustand store, URL state codec
-  ui/           components: controls, charts, panels
-  pages/        top-level views (Essentials mode, Methodology)
-  i18n/         all user-visible text (English; structured so a German
-                translation can be added without touching components)
-```
-
-**Hard rule:** nothing under `src/model/` imports from React or touches the
-DOM.
-
-## Running it
-
-```bash
 npm install
-npm run dev      # local dev server
-npm run test     # run the test suite once
-npm run test:watch
-npm run build    # production build
+npm run dev
 ```
 
-## Methodology
+Other useful commands:
 
-The in-app "Methodology" link explains how every number is calculated —
-Sources & Uses, the interest/debt circularity and how it's solved, the cash
-sweep waterfall, IRR by bisection, and the value creation bridge — along
-with the simplifications this version makes and why.
-
-## Status
-
-See `CHANGELOG.md` for what's built and what's still open. This is a
-milestone-based build; each milestone is a working, deployed version of the
-tool with an expanding feature set.
+```
+npm run test    # run the test suite once
+npm run build   # type-check and build for production
+```
