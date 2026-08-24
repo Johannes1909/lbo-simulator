@@ -47,8 +47,8 @@ export const learnSections: LearnSection[] = [
     heading: 'The same leverage, in reverse',
     paragraphs: [
       'Leverage is symmetric. It magnifies losses exactly as it magnifies gains, and it does so under a constraint that equity does not have: the interest is due whether the business is doing well or not.',
-      'Take the default deal and assume revenue declines by eight percent a year instead of growing. EBITDA falls, but the debt does not fall with it. Interest stays close to its original level, the cash flow no longer covers what is owed, and the company runs short.',
-      'At the lower level of debt the deal survives a bad scenario and returns something. At the higher level the equity can be wiped out entirely — not because the business disappeared, but because the claim ahead of it did not shrink. This is why lenders write covenants, and why the leverage a deal can carry is set by the stability of its cash flow rather than by what the model can be made to show.',
+      'Take the default deal and assume revenue declines by twenty percent a year for three consecutive years instead of growing. EBITDA falls by half over the hold period, but the debt does not fall with it — and what is left of the enterprise value belongs increasingly to the lenders.',
+      'At the lower level of debt the deal loses money but the equity survives largely intact. At the higher level two thirds of it are gone — not because the business disappeared, but because the claim ahead of it did not shrink. Note what the numbers do NOT show: the company never runs out of cash. It keeps paying down debt throughout. What destroys the return is not a liquidity crisis but the simple arithmetic of a smaller business carrying the same obligations. This is why lenders write covenants on leverage rather than waiting for a missed payment, and why the leverage a deal can carry is set by the stability of its cash flow rather than by what the model can be made to show.',
     ],
   },
   {
@@ -125,6 +125,11 @@ export const glossaryEntries: GlossaryEntry[] = [
   {
     term: 'Net debt',
     explanation: 'Debt less cash. This is what is deducted from enterprise value to arrive at what the equity is worth.',
+  },
+  {
+    term: 'PIK interest',
+    explanation:
+      'Interest that is not paid in cash but added to the loan balance instead. It preserves liquidity while the debt grows, and it is charged at a higher rate for exactly that reason.',
   },
   {
     term: 'Sponsor',

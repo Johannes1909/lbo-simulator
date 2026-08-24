@@ -55,9 +55,17 @@ const leverageIrrBars = [
 ]
 
 // ---- Section 4: where the risk sits ----
+// Matches src/content/learn.ts's "twenty percent a year for three
+// consecutive years" — a milder flat -8%/year used to sit here, which left
+// the 55%-debt column with a loss (101.9 equity, -8.9% IRR) rather than the
+// near-wipeout the paragraph below the table describes.
 const stressBase: DealInputs = {
   ...defaultInputs,
-  operating: { ...defaultInputs.operating, revenueGrowthPct: -8 },
+  operating: {
+    ...defaultInputs.operating,
+    revenueGrowthMode: 'perYear',
+    revenueGrowthByYear: [6, -20, -20, -20, 0],
+  },
 }
 const stressComparisonCases: ComparisonCase[] = [
   { label: '30% debt funded', inputs: withLeverage(stressBase, 0.3) },
